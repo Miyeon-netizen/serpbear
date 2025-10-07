@@ -31,7 +31,7 @@ export type RefreshResult = false | {
  * @param {SettingsType} settings - the App Settings that contains the scraper details
  * @returns {Promise}
  */
-export const getScraperClient = (keyword:KeywordType, settings:SettingsType, scraper?: ScraperSettings): Promise<AxiosResponse|Response> | false => {
+export const getScraperClient = (keyword:KeywordType, settings:SettingsType, scraper?: ScraperSettings, url?:string): Promise<AxiosResponse|Response> | false => {
    let apiURL = ''; let client: Promise<AxiosResponse|Response> | false = false;
    const headers: any = {
       'Content-Type': 'application/json',
@@ -48,7 +48,7 @@ export const getScraperClient = (keyword:KeywordType, settings:SettingsType, scr
    if (scraper) {
       // Set Scraper Header
       const scrapeHeaders = scraper.headers ? scraper.headers(keyword, settings) : null;
-      const scraperAPIURL = scraper.scrapeURL ? scraper.scrapeURL(keyword, settings, countries) : null;
+      const scraperAPIURL = url || (scraper.scrapeURL ? scraper.scrapeURL(keyword, settings, countries) : null);
       if (scrapeHeaders && Object.keys(scrapeHeaders).length > 0) {
          Object.keys(scrapeHeaders).forEach((headerItemKey:string) => {
             headers[headerItemKey] = scrapeHeaders[headerItemKey as keyof object];
@@ -104,6 +104,40 @@ export const scrapeKeywordFromGoogle = async (keyword:KeywordType, settings:Sett
    };
    const scraperType = settings?.scraper_type || '';
    const scraperObj = allScrapers.find((scraper:ScraperSettings) => scraper.id === scraperType);
+   if (!scraperObj) { return false; }
+
+   const multiPages = scraperObj.multi_pages ? scraperObj.multi_pages(keyword, settings, countries) : [];
+
+   if (multiPages.length > 0) {
+      const allResults: scraperExtractedItem[] = [];
+      for (const page of multiPages) {
+         const scraperClient = getScraperClient(keyword, settings, scraperObj, page);
+         if (!scraperClient) { continue; }
+         try {
+            const res = scraperType === 'proxy' && settings.proxy ? await scraperClient : await scraperClient.then((reslt:any) => reslt.json());
+            const scraperResult = scraperObj?.resultObjectKey && res[scraperObj.resultObjectKey] ? res[scraperObj.resultObjectKey] : '';
+            const scrapeResult:string = (res.data || res.html || res.results || scraperResult || '');
+            if (res && scrapeResult) {
+               const extracted = scraperObj?.serpExtractor ? scraperObj.serpExtractor(scrapeResult) : extractScrapedResult(scrapeResult, keyword.device);
+               if (allResults.length > 0) {
+                  const lastPosition = allResults[allResults.length - 1].position;
+                  extracted.forEach((item) => {
+                     item.position += lastPosition;
+                  });
+               }
+               allResults.push(...extracted);
+            }
+         } catch (error) {
+            console.log(error);
+         }
+      }
+
+      const serp = getSerp(keyword.domain, allResults);
+      refreshedResults = { ID: keyword.ID, keyword: keyword.keyword, position: serp.postion, url: serp.url, result: allResults, error: false };
+      console.log('[SERP]: ', keyword.keyword, serp.postion, serp.url);
+      return refreshedResults;
+   }
+
    const scraperClient = getScraperClient(keyword, settings, scraperObj);
 
    if (!scraperClient) { return false; }
