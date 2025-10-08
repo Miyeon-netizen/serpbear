@@ -248,6 +248,8 @@ interface ScraperSettings {
    headers?(keyword:KeywordType, settings: SettingsType): Object,
    /** Construct the API URL for scraping the data through your Scraper's API */
    scrapeURL?(keyword:KeywordType, settings:SettingsType, countries:countryData): string,
+   /** If the scraper needs to scrape multiple pages for a single keyword, use this function to construct an array of URLs. */
+   multi_pages?(keyword: KeywordType, settings: SettingsType, countries: countryData): string[],
    /** Custom function to extract the serp result from the scraped data. The extracted data should be @return {scraperExtractedItem[]} */
    serpExtractor?(content:string): scraperExtractedItem[],
 }

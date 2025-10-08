@@ -3,6 +3,8 @@ import 'isomorphic-fetch';
 import './styles/globals.css';
 import '@testing-library/jest-dom';
 import { enableFetchMocks } from 'jest-fetch-mock';
+import { TextEncoder, TextDecoder } from 'util';
+
 // Optional: configure or set up a testing framework before each test.
 // If you delete this file, remove `setupFilesAfterEnv` from `jest.config.js`
 
@@ -21,6 +23,13 @@ window.matchMedia = (query) => ({
 });
 
 global.ResizeObserver = require('resize-observer-polyfill');
+global.TextEncoder = TextEncoder;
+global.TextDecoder = TextDecoder;
+global.BroadcastChannel = class {
+    constructor(name) {}
+    postMessage(message) {}
+    close() {}
+};
 
 // Enable Fetch Mocking
 enableFetchMocks();

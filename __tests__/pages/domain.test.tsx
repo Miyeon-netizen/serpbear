@@ -1,11 +1,11 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from 'react-query';
 import SingleDomain from '../../pages/domain/[slug]';
 import { useAddDomain, useDeleteDomain, useFetchDomains, useUpdateDomain } from '../../services/domains';
 import { useAddKeywords, useDeleteKeywords,
    useFavKeywords, useFetchKeywords, useRefreshKeywords, useFetchSingleKeyword } from '../../services/keywords';
 import { dummyDomain, dummyKeywords, dummySettings } from '../../__mocks__/data';
-import { useFetchSettings } from '../../services/settings';
+import { useFetchSettings, useUpdateSettings } from '../../services/settings';
 
 jest.mock('../../services/domains');
 jest.mock('../../services/keywords');
@@ -31,11 +31,21 @@ const useAddKeywordsFunc = useAddKeywords as jest.Mock<any>;
 const useUpdateDomainFunc = useUpdateDomain as jest.Mock<any>;
 const useDeleteDomainFunc = useDeleteDomain as jest.Mock<any>;
 const useFetchSettingsFunc = useFetchSettings as jest.Mock<any>;
+const useUpdateSettingsFunc = useUpdateSettings as jest.Mock<any>;
 const useFetchSingleKeywordFunc = useFetchSingleKeyword as jest.Mock<any>;
 
 describe('SingleDomain Page', () => {
    const queryClient = new QueryClient();
    beforeEach(() => {
+      fetchMock.mockIf(new RegExp('/api/dbmigrate.*'), async () => {
+         return new Promise((resolve) => {
+            resolve({
+               body: JSON.stringify({ version: '2.0.0' }),
+               status: 200,
+            });
+         });
+      });
+      useUpdateSettingsFunc.mockImplementation(() => ({ mutate: () => {}, isLoading: false }));
       useFetchSettingsFunc.mockImplementation(() => ({ data: { settings: dummySettings }, isLoading: false }));
       useFetchDomainsFunc.mockImplementation(() => ({ data: { domains: [dummyDomain] }, isLoading: false }));
       useFetchKeywordsFunc.mockImplementation(() => ({ keywordsData: { keywords: dummyKeywords }, keywordsLoading: false }));
@@ -111,6 +121,12 @@ describe('SingleDomain Page', () => {
    });
 
    it('Country Filter should function properly', async () => {
+      const keywordsWithDifferentCountries = [
+         dummyKeywords[0], // US
+         { ...dummyKeywords[1], country: 'IN' }, // India
+      ];
+      useFetchKeywordsFunc.mockImplementation(() => ({ keywordsData: { keywords: keywordsWithDifferentCountries }, keywordsLoading: false }));
+
       render(<QueryClientProvider client={queryClient}><SingleDomain /></QueryClientProvider>);
       const button = screen.getByTestId('filter_button');
       if (button) fireEvent.click(button);
@@ -119,10 +135,23 @@ describe('SingleDomain Page', () => {
       const countrySelect = document.querySelector('.country_filter .selected');
       if (countrySelect) fireEvent.click(countrySelect);
       expect(document.querySelector('.country_filter .select_list')).toBeVisible();
-      const firstCountry = document.querySelector('.country_filter .select_list ul li:nth-child(1)');
-      if (firstCountry) fireEvent.click(firstCountry);
-      const keywordsCount = document.querySelectorAll('.keyword').length;
-      expect(keywordsCount).toBe(0);
+
+      // Find and click the 'India' option.
+      const listItems = document.querySelectorAll('.country_filter .select_list ul li');
+      let indiaOption:Element|null = null;
+      listItems.forEach((item) => {
+        if (item.textContent?.includes('India')) {
+          indiaOption = item;
+        }
+      });
+
+      if (indiaOption) fireEvent.click(indiaOption);
+
+      await waitFor(() => {
+         const keywords = document.querySelectorAll('.keyword');
+         expect(keywords.length).toBe(1);
+         expect(screen.getByText('image compressor')).toBeInTheDocument();
+      });
    });
 
    // Tags Filter should function properly
